@@ -16,8 +16,8 @@ pub struct ServerConfig {
 impl AppConfig {
     pub fn load() -> Result<Self> {
         let ret = match (
-            File::open("app.yml"),
-            File::open("/etc/config/app.yml"),
+            File::open("app.yaml"),
+            File::open("/etc/config/app.yaml"),
             env::var("CHAT_CONFIG"),
         ) {
             (Ok(reader), _, _) => serde_yaml::from_reader(reader),
