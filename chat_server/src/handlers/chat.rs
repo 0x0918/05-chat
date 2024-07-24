@@ -3,7 +3,7 @@ use tracing::info;
 
 use crate::User;
 
-pub(crate) async fn list_chat_handler(Extension(user): Extension<User>) -> impl IntoResponse {
+pub async fn list_chat_handler(Extension(user): Extension<User>) -> impl IntoResponse {
     info!("user: {:?}", user);
     "chat"
 }

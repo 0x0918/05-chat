@@ -37,6 +37,7 @@ pub async fn verify_token(State(state): State<AppState>, req: Request, next: Nex
                 return (StatusCode::UNAUTHORIZED, msg).into_response();
             }
         };
+
     next.run(req).await
 }
 

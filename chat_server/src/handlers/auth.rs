@@ -1,9 +1,11 @@
+use crate::{
+    models::{CreateUser, SigninUser},
+    AppError, AppState, ErrorOutput, User,
+};
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
 
-use crate::{AppError, AppState, CreateUser, ErrorOutput, SigninUser, User};
-
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AuthOutput {
     token: String,
 }
@@ -23,6 +25,7 @@ pub async fn signin_handler(
     Json(input): Json<SigninUser>,
 ) -> Result<impl IntoResponse, AppError> {
     let user = User::verify(&input, &state.pool).await?;
+
     match user {
         Some(user) => {
             let token = state.ek.sign(user)?;
@@ -50,7 +53,7 @@ mod tests {
     async fn signup_should_work() -> Result<()> {
         let config = AppConfig::load()?;
         let (_tdb, state) = AppState::new_for_test(config).await?;
-        let input = CreateUser::new("0x0918", "yiyunbest@gmail.com", "0x0918");
+        let input = CreateUser::new("none", "0x0918", "yiyunbest@gmail.com", "0x0918");
         let ret = signup_handler(State(state), Json(input))
             .await?
             .into_response();
@@ -65,7 +68,7 @@ mod tests {
     async fn signup_duplicate_user_should_409() -> Result<()> {
         let config = AppConfig::load()?;
         let (_tdb, state) = AppState::new_for_test(config).await?;
-        let input = CreateUser::new("0x0918", "yiyunbest@gmail.com", "0x0918");
+        let input = CreateUser::new("none", "0x0918", "yiyunbest@gmail.com", "0x0918");
         signup_handler(State(state.clone()), Json(input.clone())).await?;
         let ret = signup_handler(State(state.clone()), Json(input.clone()))
             .await
@@ -86,7 +89,7 @@ mod tests {
         let email = "yiyunbest@gmail.com";
         let password = "0x0918";
 
-        let uesr = CreateUser::new(name, email, password);
+        let uesr = CreateUser::new("none", name, email, password);
         User::create(&uesr, &state.pool).await?;
         let input = SigninUser::new(email, password);
         let ret = signin_handler(State(state), Json(input))
