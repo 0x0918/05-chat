@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::mem;
 
-use super::Workspace;
+use super::{ChatUser, Workspace};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateUser {
@@ -93,6 +93,24 @@ impl User {
             }
             None => Ok(None),
         }
+    }
+}
+
+impl ChatUser {
+    pub async fn fetch_by_ids(ids: &[i64], pool: &PgPool) -> Result<Vec<Self>, AppError> {
+        let users = sqlx::query_as(r#"SELECT id, fullname, email FROM users WHERE id = ANY($1)"#)
+            .bind(ids)
+            .fetch_all(pool)
+            .await?;
+        Ok(users)
+    }
+
+    pub async fn fetch_all(ws_id: u64, pool: &PgPool) -> Result<Vec<Self>, AppError> {
+        let users = sqlx::query_as(r#"SELECT id, fullname, email FROM users WHERE ws_id = $1"#)
+            .bind(ws_id as i64)
+            .fetch_all(pool)
+            .await?;
+        Ok(users)
     }
 }
 
