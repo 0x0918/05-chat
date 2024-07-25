@@ -46,14 +46,14 @@ mod tests {
 
     use crate::{
         signin_handler, signup_handler, AppConfig, AppState, AuthOutput, CreateUser, ErrorOutput,
-        SigninUser, User,
+        SigninUser,
     };
 
     #[tokio::test]
     async fn signup_should_work() -> Result<()> {
-        let config = AppConfig::load()?;
+        let config: AppConfig = AppConfig::load()?;
         let (_tdb, state) = AppState::new_for_test(config).await?;
-        let input = CreateUser::new("none", "0x0918", "yiyunbest@gmail.com", "0x0918");
+        let input = CreateUser::new("acme", "0x09181", "yiyunbest1@gmail.com", "0x0918");
         let ret = signup_handler(State(state), Json(input))
             .await?
             .into_response();
@@ -68,16 +68,15 @@ mod tests {
     async fn signup_duplicate_user_should_409() -> Result<()> {
         let config = AppConfig::load()?;
         let (_tdb, state) = AppState::new_for_test(config).await?;
-        let input = CreateUser::new("none", "0x0918", "yiyunbest@gmail.com", "0x0918");
-        signup_handler(State(state.clone()), Json(input.clone())).await?;
-        let ret = signup_handler(State(state.clone()), Json(input.clone()))
+        let input = CreateUser::new("acme", "Tyr Chen", "tchen@acme.org", "123456");
+        let ret = signup_handler(State(state), Json(input))
             .await
             .into_response();
         assert_eq!(ret.status(), StatusCode::CONFLICT);
         let body = ret.into_body().collect().await?.to_bytes();
         let ret: ErrorOutput = serde_json::from_slice(&body)?;
 
-        assert_eq!(ret.error, "email already exists: yiyunbest@gmail.com");
+        assert_eq!(ret.error, "email already exists: tchen@acme.org");
         Ok(())
     }
 
@@ -85,12 +84,8 @@ mod tests {
     async fn signin_should_work() -> Result<()> {
         let config = AppConfig::load()?;
         let (_tdb, state) = AppState::new_for_test(config).await?;
-        let name = "0x0918";
-        let email = "yiyunbest@gmail.com";
-        let password = "0x0918";
-
-        let uesr = CreateUser::new("none", name, email, password);
-        User::create(&uesr, &state.pool).await?;
+        let email = "tchen@acme.org";
+        let password = "123456";
         let input = SigninUser::new(email, password);
         let ret = signin_handler(State(state), Json(input))
             .await?
