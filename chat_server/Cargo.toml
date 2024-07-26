@@ -21,6 +21,9 @@ uuid = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
 axum-extra = { workspace = true }
+hex = "0.4.3"
+mime_guess = "2.0.5"
+sha1 = "0.10.6"
 
 
 [dev-dependencies]
