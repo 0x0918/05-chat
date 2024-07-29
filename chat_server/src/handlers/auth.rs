@@ -1,6 +1,6 @@
 use crate::{
     models::{CreateUser, SigninUser},
-    AppError, AppState, ErrorOutput, User,
+    AppError, AppState, ErrorOutput,
 };
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
@@ -10,21 +10,21 @@ pub struct AuthOutput {
     token: String,
 }
 
-pub async fn signup_handler(
+pub(crate) async fn signup_handler(
     State(state): State<AppState>,
     Json(input): Json<CreateUser>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = User::create(&input, &state.pool).await?;
+    let user = state.create_user(&input).await?;
     let token = state.ek.sign(user)?;
     let body = Json(AuthOutput { token });
     Ok((StatusCode::CREATED, body))
 }
 
-pub async fn signin_handler(
+pub(crate) async fn signin_handler(
     State(state): State<AppState>,
     Json(input): Json<SigninUser>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = User::verify(&input, &state.pool).await?;
+    let user = state.verify_user(&input).await?;
 
     match user {
         Some(user) => {
@@ -40,20 +40,14 @@ pub async fn signin_handler(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use anyhow::Result;
-    use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
     use http_body_util::BodyExt;
-
-    use crate::{
-        signin_handler, signup_handler, AppConfig, AppState, AuthOutput, CreateUser, ErrorOutput,
-        SigninUser,
-    };
 
     #[tokio::test]
     async fn signup_should_work() -> Result<()> {
-        let config: AppConfig = AppConfig::load()?;
-        let (_tdb, state) = AppState::new_for_test(config).await?;
-        let input = CreateUser::new("acme", "0x09181", "yiyunbest1@gmail.com", "0x0918");
+        let (_tdb, state) = AppState::new_for_test().await?;
+        let input = CreateUser::new("acme", "Tian Chen", "tyr@acme.org", "123456");
         let ret = signup_handler(State(state), Json(input))
             .await?
             .into_response();
@@ -66,9 +60,9 @@ mod tests {
 
     #[tokio::test]
     async fn signup_duplicate_user_should_409() -> Result<()> {
-        let config = AppConfig::load()?;
-        let (_tdb, state) = AppState::new_for_test(config).await?;
+        let (_tdb, state) = AppState::new_for_test().await?;
         let input = CreateUser::new("acme", "Tyr Chen", "tchen@acme.org", "123456");
+
         let ret = signup_handler(State(state), Json(input))
             .await
             .into_response();
@@ -82,26 +76,26 @@ mod tests {
 
     #[tokio::test]
     async fn signin_should_work() -> Result<()> {
-        let config = AppConfig::load()?;
-        let (_tdb, state) = AppState::new_for_test(config).await?;
+        let (_tdb, state) = AppState::new_for_test().await?;
         let email = "tchen@acme.org";
         let password = "123456";
         let input = SigninUser::new(email, password);
         let ret = signin_handler(State(state), Json(input))
             .await?
             .into_response();
+        assert_eq!(ret.status(), StatusCode::OK);
         let body = ret.into_body().collect().await?.to_bytes();
         let ret: AuthOutput = serde_json::from_slice(&body)?;
         assert_ne!(ret.token, "");
+
         Ok(())
     }
 
     #[tokio::test]
     async fn signin_with_non_exist_user_should_403() -> Result<()> {
-        let config = AppConfig::load()?;
-        let (_tdb, state) = AppState::new_for_test(config).await?;
-        let email = "yiyunbest@gamail.com";
-        let password = "0x0918";
+        let (_tdb, state) = AppState::new_for_test().await?;
+        let email = "tchen1@acme.org";
+        let password = "123456";
         let input = SigninUser::new(email, password);
         let ret = signin_handler(State(state), Json(input))
             .await

@@ -50,7 +50,7 @@ mod tests {
     };
     use tower::ServiceExt;
 
-    use crate::{verify_token, AppConfig, AppState, User};
+    use crate::{verify_token, AppState, User};
 
     async fn handler(_req: Request) -> impl IntoResponse {
         (StatusCode::OK, "ok")
@@ -58,8 +58,7 @@ mod tests {
 
     #[tokio::test]
     async fn verify_token_middleware_should_work() -> Result<()> {
-        let config = AppConfig::load()?;
-        let (_tdb, state) = AppState::new_for_test(config).await?;
+        let (_tdb, state) = AppState::new_for_test().await?;
         let user = User::new(1, "0x0918", "yiyunbest@gmail.com");
         let token = state.ek.sign(user)?;
         let app = Router::new()
