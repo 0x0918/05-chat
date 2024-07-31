@@ -1,11 +1,13 @@
-use std::{future::Future, pin::Pin};
-
+use super::{REQUEST_ID_HEADER, SERVER_TIME_HEADER};
 use axum::{extract::Request, response::Response};
+use std::{
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll},
+};
 use tokio::time::Instant;
 use tower::{Layer, Service};
 use tracing::warn;
-
-use crate::middlewares::{REQUEST_ID_HEADER, SEVER_TIME_HEADER};
 
 #[derive(Clone)]
 pub struct ServerTimeLayer;
@@ -33,6 +35,11 @@ where
     // `BoxFuture` is a type alias for `Pin<Box<dyn Future + Send + 'a>>`
     type Future =
         Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
     fn call(&mut self, request: Request) -> Self::Future {
         let start = Instant::now();
         let future = self.inner.call(request);
@@ -41,7 +48,7 @@ where
             let elapsed = format!("{}us", start.elapsed().as_micros());
             match elapsed.parse() {
                 Ok(v) => {
-                    res.headers_mut().insert(SEVER_TIME_HEADER, v);
+                    res.headers_mut().insert(SERVER_TIME_HEADER, v);
                 }
                 Err(e) => {
                     warn!(
@@ -54,11 +61,5 @@ where
 
             Ok(res)
         })
-    }
-    fn poll_ready(
-        &mut self,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx)
     }
 }

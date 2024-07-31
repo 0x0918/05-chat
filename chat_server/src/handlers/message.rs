@@ -1,21 +1,34 @@
 use axum::{
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, Query, State},
     http::HeaderMap,
     response::IntoResponse,
     Extension, Json,
 };
-use mime_guess::from_path;
-use tokio::fs::{self, create_dir_all, write};
+use tokio::fs;
 use tracing::{info, warn};
 
-use crate::{AppError, AppState, ChatFile, User};
+use chat_core::User;
 
-pub async fn send_message_handler() -> impl IntoResponse {
-    "send message"
+use crate::*;
+
+pub async fn send_message_handler(
+    Extension(user): Extension<User>,
+    State(state): State<AppState>,
+    Path(id): Path<u64>,
+    Json(input): Json<CreateMessage>,
+) -> Result<impl IntoResponse, AppError> {
+    let msg = state.create_message(input, id, user.id as _).await?;
+
+    Ok(Json(msg))
 }
 
-pub async fn list_message_handler() -> impl IntoResponse {
-    "list message"
+pub async fn list_message_handler(
+    State(state): State<AppState>,
+    Path(id): Path<u64>,
+    Query(input): Query<ListMessages>,
+) -> Result<impl IntoResponse, AppError> {
+    let messages = state.list_messages(input, id).await?;
+    Ok(Json(messages))
 }
 
 pub async fn file_handler(
@@ -25,7 +38,7 @@ pub async fn file_handler(
 ) -> Result<impl IntoResponse, AppError> {
     if user.ws_id != ws_id {
         return Err(AppError::NotFound(
-            "File doesn't exist or you dont have permission".to_string(),
+            "File doesn't exist or you don't have permission".to_string(),
         ));
     }
     let base_dir = state.config.server.base_dir.join(ws_id.to_string());
@@ -33,7 +46,9 @@ pub async fn file_handler(
     if !path.exists() {
         return Err(AppError::NotFound("File doesn't exist".to_string()));
     }
-    let mime = from_path(&path).first_or_octet_stream();
+
+    let mime = mime_guess::from_path(&path).first_or_octet_stream();
+    // TODO: streaming
     let body = fs::read(path).await?;
     let mut headers = HeaderMap::new();
     headers.insert("content-type", mime.to_string().parse().unwrap());
@@ -54,15 +69,17 @@ pub async fn upload_handler(
             warn!("Failed to read multipart field");
             continue;
         };
+
         let file = ChatFile::new(ws_id, &filename, &data);
         let path = file.path(base_dir);
         if path.exists() {
             info!("File {} already exists: {:?}", filename, path);
         } else {
-            create_dir_all(path.parent().expect("file path parent should exists")).await?;
-            write(path, data).await?;
+            fs::create_dir_all(path.parent().expect("file path parent should exists")).await?;
+            fs::write(path, data).await?;
         }
         files.push(file.url());
     }
+
     Ok(Json(files))
 }

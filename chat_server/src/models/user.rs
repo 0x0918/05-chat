@@ -1,9 +1,9 @@
-use super::ChatUser;
-use crate::{AppError, AppState, User};
+use crate::{AppError, AppState};
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
+use chat_core::{ChatUser, User};
 use serde::{Deserialize, Serialize};
 use std::mem;
 
@@ -21,6 +21,7 @@ pub struct SigninUser {
     pub password: String,
 }
 
+#[allow(dead_code)]
 impl AppState {
     /// Find a user by email
     pub async fn find_user_by_email(&self, email: &str) -> Result<Option<User>, AppError> {
@@ -28,6 +29,17 @@ impl AppState {
             "SELECT id, ws_id, fullname, email, created_at FROM users WHERE email = $1",
         )
         .bind(email)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(user)
+    }
+
+    // find a user by id
+    pub async fn find_user_by_id(&self, id: i64) -> Result<Option<User>, AppError> {
+        let user = sqlx::query_as(
+            "SELECT id, ws_id, fullname, email, created_at FROM users WHERE id = $1",
+        )
+        .bind(id)
         .fetch_optional(&self.pool)
         .await?;
         Ok(user)
@@ -64,7 +76,8 @@ impl AppState {
         .await?;
 
         if ws.owner_id == 0 {
-            ws.update_owner(user.id as _, &self.pool).await?;
+            self.update_workspace_owner(ws.id as _, user.id as _)
+                .await?;
         }
 
         Ok(user)
@@ -149,20 +162,6 @@ fn verify_password(password: &str, password_hash: &str) -> Result<bool, AppError
 }
 
 #[cfg(test)]
-impl User {
-    pub fn new(id: i64, fullname: &str, email: &str) -> Self {
-        Self {
-            id,
-            ws_id: 0,
-            fullname: fullname.to_string(),
-            email: email.to_string(),
-            password_hash: None,
-            created_at: chrono::Utc::now(),
-        }
-    }
-}
-
-#[cfg(test)]
 impl CreateUser {
     pub fn new(ws: &str, fullname: &str, email: &str, password: &str) -> Self {
         Self {
@@ -233,6 +232,17 @@ mod tests {
         let user = state.verify_user(&input).await?;
         assert!(user.is_some());
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn find_user_by_id_should_work() -> Result<()> {
+        let (_tdb, state) = AppState::new_for_test().await?;
+
+        let user = state.find_user_by_id(1).await?;
+        assert!(user.is_some());
+        let user = user.unwrap();
+        assert_eq!(user.id, 1);
         Ok(())
     }
 }

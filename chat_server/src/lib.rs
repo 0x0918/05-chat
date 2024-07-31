@@ -3,25 +3,28 @@ mod error;
 mod handlers;
 mod middlewares;
 mod models;
-mod utils;
 
-use std::{fmt::Debug, ops::Deref, sync::Arc};
+use anyhow::Context;
+use chat_core::{
+    middlewares::{set_layer, verify_token, TokenVerify},
+    DecodingKey, EncodingKey, User,
+};
+use handlers::*;
+use middlewares::verify_chat;
+use sqlx::PgPool;
+use std::{fmt, ops::Deref, sync::Arc};
+use tokio::fs;
 
-use anyhow::{Context, Result};
+pub use error::{AppError, ErrorOutput};
+pub use models::*;
+
 use axum::{
     middleware::from_fn_with_state,
-    routing::{get, patch, post},
+    routing::{get, post},
     Router,
 };
 
-pub use config::*;
-pub use error::*;
-pub use handlers::*;
-pub use middlewares::*;
-pub use models::*;
-use sqlx::PgPool;
-use tokio::fs::create_dir_all;
-use utils::{DecodingKey, EncodingKey};
+pub use config::AppConfig;
 
 #[derive(Debug, Clone)]
 pub struct AppState {
@@ -29,7 +32,6 @@ pub struct AppState {
 }
 
 #[allow(unused)]
-
 pub struct AppStateInner {
     pub config: AppConfig,
     pub dk: DecodingKey,
@@ -40,19 +42,25 @@ pub struct AppStateInner {
 pub async fn get_router(config: AppConfig) -> Result<Router, AppError> {
     let state = AppState::try_new(config).await?;
 
-    let api = Router::new()
-        .route("/users", get(list_chat_users_handler))
-        .route("/chats", get(list_chat_handler).post(create_chat_handler))
+    let chat = Router::new()
         .route(
-            "/chats/:id",
-            patch(update_chat_handler)
+            "/:id",
+            get(get_chat_handler)
+                .patch(update_chat_handler)
                 .delete(delete_chat_handler)
                 .post(send_message_handler),
         )
-        .route("/chats/:id/messages", get(list_message_handler))
+        .route("/:id/messages", get(list_message_handler))
+        .layer(from_fn_with_state(state.clone(), verify_chat))
+        .route("/", get(list_chat_handler).post(create_chat_handler));
+
+    let api = Router::new()
+        .route("/users", get(list_chat_users_handler))
+        .nest("/chats", chat)
         .route("/upload", post(upload_handler))
         .route("/files/:ws_id/*path", get(file_handler))
-        .layer(from_fn_with_state(state.clone(), verify_token))
+        .layer(from_fn_with_state(state.clone(), verify_token::<AppState>))
+        // routes doesn't need token verification
         .route("/signin", post(signin_handler))
         .route("/signup", post(signup_handler));
 
@@ -60,26 +68,37 @@ pub async fn get_router(config: AppConfig) -> Result<Router, AppError> {
         .route("/", get(index_handler))
         .nest("/api", api)
         .with_state(state);
+
     Ok(set_layer(app))
 }
 
+// 当我调用 state.config => state.inner.config
 impl Deref for AppState {
     type Target = AppStateInner;
+
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
+impl TokenVerify for AppState {
+    type Error = AppError;
+
+    fn verify(&self, token: &str) -> Result<User, Self::Error> {
+        Ok(self.dk.verify(token)?)
+    }
+}
+
 impl AppState {
     pub async fn try_new(config: AppConfig) -> Result<Self, AppError> {
-        create_dir_all(&config.server.base_dir)
+        fs::create_dir_all(&config.server.base_dir)
             .await
             .context("create base_dir failed")?;
         let dk = DecodingKey::load(&config.auth.pk).context("load pk failed")?;
         let ek = EncodingKey::load(&config.auth.sk).context("load sk failed")?;
         let pool = PgPool::connect(&config.server.db_url)
             .await
-            .context("Connect to db failed")?;
+            .context("connect to db failed")?;
         Ok(Self {
             inner: Arc::new(AppStateInner {
                 config,
@@ -91,8 +110,8 @@ impl AppState {
     }
 }
 
-impl Debug for AppStateInner {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for AppStateInner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AppStateInner")
             .field("config", &self.config)
             .finish()

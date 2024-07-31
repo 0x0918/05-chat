@@ -10,7 +10,7 @@ pub struct AuthOutput {
     token: String,
 }
 
-pub(crate) async fn signup_handler(
+pub async fn signup_handler(
     State(state): State<AppState>,
     Json(input): Json<CreateUser>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -20,7 +20,7 @@ pub(crate) async fn signup_handler(
     Ok((StatusCode::CREATED, body))
 }
 
-pub(crate) async fn signin_handler(
+pub async fn signin_handler(
     State(state): State<AppState>,
     Json(input): Json<SigninUser>,
 ) -> Result<impl IntoResponse, AppError> {
